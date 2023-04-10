@@ -33,10 +33,17 @@ class ImageNet21kSemanticSoftmax:
         self.hirarchy_level_list = hirarchy_level_list
         self.class_names_ind_list = class_names_ind_list
 
-        rows = []
+        rows = []           
         for item in self.class_tree_list:
-            rows.append(np.pad(item, (0, 12), 'constant', constant_values=0)[:12])
+            rows.append(np.pad(item, (0, 12), 'constant', constant_values=-1)[:12])
         self.after_class_tree_list = np.concatenate(rows, axis=0).reshape(-1, 12)
+        
+        temp_class_tree = []
+        for j, cls in enumerate(self.after_class_tree_list):
+            a = np.array(np.delete(cls, 0 if cls[11]!=-1 else 11))
+            temp_class_tree.append(a)
+        self.after_class_tree_list = np.array(temp_class_tree)
+        
 
         # calculating normalization array
         self.normalization_factor_list = tf.concat([tf.zeros_like(hist_tree)[:-1], [hist_tree[-1]]], axis=0)
@@ -73,12 +80,11 @@ class ImageNet21kSemanticSoftmax:
 
         targets = tf.identity(targets_original)  # dont edit original targets
         batch_size = tf.shape(targets)[0]
-        # targets = tf.cast(targets, dtype=tf.int64)
         tensor_list = tf.TensorArray(tf.int64, size=batch_size)
         for i in range(batch_size):
             target = targets[i]
             cls_multi_list = tf.gather(self.after_class_tree_list, target)[0]
-            tensor_list.write(i, cls_multi_list)
+            tensor_list = tensor_list.write(i, cls_multi_list)
 
         semantic_targets_list = tf.stack(tensor_list.stack())
         return semantic_targets_list

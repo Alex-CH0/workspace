@@ -25,6 +25,9 @@ class SemanticSoftmaxLoss(tf.keras.losses.Loss):
         for i in range(len(semantic_logit_list)):
             logits_i = semantic_logit_list[i]
             targets_i = semantic_targets_tensor[:, i]
+            
+            
+            log_preds = tf.math.log_softmax(logits_i, axis=1)
 
             targets_i_valid = tf.identity(targets_i)
             targets_i_valid = tf.where(targets_i_valid < 0, tf.constant(0, dtype=targets_i_valid.dtype),
@@ -33,16 +36,21 @@ class SemanticSoftmaxLoss(tf.keras.losses.Loss):
             num_classes = logits_i.shape[-1]
             targets_classes = tf.one_hot(targets_i_valid, depth=num_classes, dtype=logits_i.dtype)
             targets_classes = targets_classes * (1 - self.label_smooth) + self.label_smooth / num_classes
-
-            loss_i = tf.keras.losses.CategoricalCrossentropy(reduction=tf.keras.losses.Reduction.SUM)(logits_i,
-                                                                                                      targets_classes)
+            
+            cross_entropy_loss_tot = -targets_classes * log_preds
+            
+            #masked = tf.boolean_mask(targets_i, tf.math.greater_equal(targets_i, tf.constant(0, dtype=targets_i.dtype)))
+            temp_expand = tf.cast(tf.expand_dims(targets_i >= 0, axis=1), dtype=tf.float32)
+            
+            cross_entropy_loss_tot *= temp_expand
+            cross_entropy_loss = tf.reduce_sum(cross_entropy_loss_tot, axis=-1)  # sum over classes
+            loss_i = tf.reduce_mean(cross_entropy_loss)  # mean over batch
+            
             losses_list.append(loss_i)
 
+
         total_sum = 0.
-        multiply_factor = self.semantic_softmax_processor.get_multiply_factor()
         for i, loss_h in enumerate(losses_list):  # summing over hirarchies
-            mul_factor_i = multiply_factor[i]
-            loss_h = tf.math.multiply(loss_h, mul_factor_i)
             temp = loss_h * tf.cast(self.semantic_softmax_processor.normalization_factor_list[i], dtype=tf.float32)
             total_sum += temp
 
